@@ -1,0 +1,16 @@
+target/
+.idea/
+.idea_modules/
+.DS_store
+.history
+*.swp
+*.iml
+logs/
+.vagrant/
+.cache
+.classpath
+.project
+.settings/
+.target/
+eclipsebin/
+*.log
