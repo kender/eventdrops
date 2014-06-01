@@ -20,17 +20,16 @@ class HttpService(channelsRef: ActorRef) extends HttpServiceActor with ActorLogg
           createChannel(channelId)
         }
       } ~
-      post { reqContext ⇒
-        complete {
-          println(s"published to: $channelId")
-          publish(channelId, reqContext.request.entity.asString)
+      post {
+        entity(as[String]) { entity ⇒
+          complete {
+            publish(channelId, entity)
+          }
         }
       } ~
       get { reqContext ⇒
         println(s"subscribed to: $channelId")
-        Future {
-          subscribe(channelId)(reqContext)
-        }
+        subscribe(channelId)(reqContext)
       }
     }
 
@@ -41,20 +40,31 @@ class HttpService(channelsRef: ActorRef) extends HttpServiceActor with ActorLogg
   }
   
   def subscribe(channelId: String)(requestContext: RequestContext) = {
-    val subscriber = context.actorOf(Props(classOf[ChannelSubscriber], requestContext))
-    subscriber ! ChannelSubscriber.Subscribe(channelId)
+    implicit val timeout = new Timeout(1.second)
+
+    channelsRef.ask(Channels.FindChannel(channelId)) map {
+      case Channels.FoundChannel(Some(channelRef)) ⇒
+        val subscriber = context.actorOf(Props(classOf[ChannelSubscriber], requestContext))
+        subscriber ! ChannelSubscriber.Subscribe(channelRef)
+        subscriber
+
+      case Channels.FoundChannel(None) ⇒ complete { StatusCodes.NotFound }
+    }
   }
 
   def publish(channelId: String, entity: String): Future[StatusCode] = {
     implicit val timeout = new Timeout(1.second)
 
+    println("publishing...")
     channelsRef.ask(Channels.FindChannel(channelId)) flatMap {
       case Channels.FoundChannel(Some(channelRef)) ⇒ successful {
-        channelsRef ! Channel.Publish(Channel.ChannelMessage(entity))
+        println("found... publishing")
+        channelRef ! Channel.Publish(Channel.ChannelMessage(entity))
         StatusCodes.Accepted
       }
 
       case Channels.FoundChannel(None) ⇒ successful {
+        println("not found...")
         StatusCodes.NotFound
       }
     }
